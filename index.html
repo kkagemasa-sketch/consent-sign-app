@@ -63,6 +63,20 @@
   .done .dl{display:flex;flex-direction:column;gap:10px;margin-top:18px;}
   .hidden{display:none;}
   .footnote{font-size:11px;color:#999;text-align:center;margin-top:24px;}
+  /* タップして開く手書きボックスのヒント */
+  .tap-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9aa6a0;font-size:15px;pointer-events:none;text-align:center;padding:8px;}
+  .sig-wrap, .pad{cursor:pointer;}
+  /* フルスクリーン手書きオーバーレイ */
+  .ov{position:fixed;inset:0;background:#fff;z-index:1000;display:flex;flex-direction:column;}
+  .ov.hidden{display:none;}
+  .ov-head{padding:12px 14px;background:var(--brand);color:#fff;flex:none;}
+  .ov-head #ovTitle{font-size:16px;font-weight:700;}
+  .ov-head .ov-hint{display:block;font-size:12px;opacity:.9;margin-top:2px;}
+  .ov-canvas-wrap{position:relative;flex:1;margin:10px;border:2px dashed var(--brand);border-radius:10px;background:#fafbfa;overflow:hidden;}
+  #ovCanvas{display:block;width:100%;height:100%;touch-action:none;}
+  .ov-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c2cbc5;font-size:18px;pointer-events:none;text-align:center;padding:20px;}
+  .ov-btns{display:flex;gap:10px;padding:12px 14px;flex:none;}
+  .ov-btns .btn{flex:1;}
   .errbox{background:#fdecea;color:#a32b20;border:1px solid #f5c6c0;border-radius:8px;
     padding:12px;font-size:13px;margin-bottom:16px;}
 </style>
@@ -98,28 +112,26 @@
         </label>
         <div class="date-row">
           <div class="date-cell"><span class="dlab" id="lblY">年（西暦）</span>
-            <div class="pad-wrap"><div class="pad" data-k="year"><canvas></canvas><div class="ph">年</div></div><span class="kanji">年</span></div>
+            <div class="pad-wrap"><div class="pad" data-k="year"><canvas></canvas><div class="tap-hint">タップして「年」を手書き</div></div><span class="kanji">年</span></div>
           </div>
           <div class="date-cell"><span class="dlab">月</span>
-            <div class="pad-wrap"><div class="pad" data-k="month"><canvas></canvas><div class="ph">月</div></div><span class="kanji">月</span></div>
+            <div class="pad-wrap"><div class="pad" data-k="month"><canvas></canvas><div class="tap-hint">タップして「月」を手書き</div></div><span class="kanji">月</span></div>
           </div>
           <div class="date-cell"><span class="dlab">日</span>
-            <div class="pad-wrap"><div class="pad" data-k="day"><canvas></canvas><div class="ph">日</div></div><span class="kanji">日</span></div>
+            <div class="pad-wrap"><div class="pad" data-k="day"><canvas></canvas><div class="tap-hint">タップして「日」を手書き</div></div><span class="kanji">日</span></div>
           </div>
         </div>
-        <div class="sig-bar"><small>各枠に数字を手書きしてください（例：2026 / 6 / 2）</small>
-          <button class="btn btn-clear" id="clearDateBtn" type="button">日付を書き直す</button></div>
+        <div class="sig-bar"><small>枠をタップすると大きな画面で書けます（例：2026 / 6 / 2）</small></div>
       </div>
 
       <div class="field">
         <label>ご署名<span class="req">必須</span></label>
         <div class="sig-wrap" id="sigWrap">
           <canvas id="sigCanvas"></canvas>
-          <div class="sig-hint" id="sigHint">こちらに指またはペンで署名してください</div>
+          <div class="tap-hint" id="sigHint">タップして署名を書く（大きな画面が開きます）</div>
         </div>
         <div class="sig-bar">
-          <small>スマホ・タブレットは指やペン、PCはマウスで書けます</small>
-          <button class="btn btn-clear" id="clearBtn" type="button">書き直す</button>
+          <small>枠をタップ → 大きな画面で署名（横向きにするとさらに広く書けます）</small>
         </div>
       </div>
 
@@ -146,9 +158,26 @@
     </div>
   </div>
 
-  <p class="footnote">承諾書署名アプリ 試作版 v0.4（オフライン同梱版・手書き日付）</p>
+  <p class="footnote">承諾書署名アプリ 試作版 v0.5（フルスクリーン手書き）</p>
 </main>
 
-<script src="app.js?b=10"></script>
+<!-- フルスクリーン手書き画面 -->
+<div id="sigOverlay" class="ov hidden">
+  <div class="ov-head">
+    <span id="ovTitle">ここに署名してください</span>
+    <span class="ov-hint">画面を横向きにすると、さらに広く書けます</span>
+  </div>
+  <div class="ov-canvas-wrap">
+    <canvas id="ovCanvas"></canvas>
+    <div class="ov-ph" id="ovPh">ここに大きく手書きしてください</div>
+  </div>
+  <div class="ov-btns">
+    <button id="ovCancel" class="btn btn-clear" type="button">とじる</button>
+    <button id="ovClear" class="btn btn-clear" type="button">書き直す</button>
+    <button id="ovDone" class="btn btn-primary" type="button" style="width:auto;">この内容で確定</button>
+  </div>
+</div>
+
+<script src="app.js?b=11"></script>
 </body>
 </html>

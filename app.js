@@ -2,7 +2,7 @@ function dbg(s){ var e=document.getElementById('dbg'); if(e){ e.textContent='診
 window.addEventListener('error', function(ev){ dbg('エラー → '+ev.message+' (行'+ev.lineno+')'); });
 dbg('起動中…(app.js 読み込み)');
 
-// --- 同意書画像の表示制御（インライン属性を使わない）---
+// --- 同意書画像の表示制御 ---
 (function(){
   var img=document.getElementById('docImg'), load=document.getElementById('pdfLoading');
   function show(){ if(load) load.style.display='none'; if(img) img.style.display='block'; }
@@ -15,14 +15,12 @@ const DOC_VERSION = "hoken-boshu-doui-v1";
 const DOC_TITLE = "保険募集同意書";
 
 // ===== Supabase 設定（プロジェクト作成後にここへ貼り付け）=====
-// 空のままなら自動アップロードは行わず、従来どおりダウンロードのみ動作します（安全）。
-const SUPABASE_URL = "";        // 例: https://xxxxxxxx.supabase.co
-const SUPABASE_ANON_KEY = "";   // 例: eyJhbGciOi... （anon public キー）
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
 const SUPABASE_BUCKET = "signed-consents";
 const supaEnabled = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
 const supa = supaEnabled ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-// 署名済みPDFをクラウド保管庫へアップロード（お客様は送り返し不要）
 async function uploadSigned(bytes, rec){
   if(!supaEnabled) return { ok:false, skipped:true };
   const safeName = (rec.name || "署名者").replace(/[\\/:*?"<>| -]/g,"_").slice(0,40);
@@ -35,12 +33,11 @@ async function uploadSigned(bytes, rec){
   return { ok:true, path };
 }
 
-// 実測座標（PyMuPDF・原点は左上/y下向き、ページ高さ841.92pt）。pdf-libは左下原点なので y=PAGE_H-yTop で変換
+// 埋め込み座標
 const PAGE_H = 841.92;
-// 署名: 「ご署名:」の右。日付行と被らないよう上端を658に下げ、下方向へ伸ばす
 const SIG_BOX  = { x: 85, yTopAnchor: 658, maxW: 220, maxH: 46 };
-const DATE_LINE_TOP = 644;                                      // 「年 月 日」の下端（やや上げて署名と離す）
-const DATE_PADS = {                                             // 各数字の右端を漢字の直前に合わせる
+const DATE_LINE_TOP = 644;
+const DATE_PADS = {
   year:  { rightX: 104, maxW: 30, maxH: 22 },
   month: { rightX: 153, maxW: 33, maxH: 22 },
   day:   { rightX: 204, maxW: 33, maxH: 22 }
@@ -48,46 +45,42 @@ const DATE_PADS = {                                             // 各数字の�
 
 let pdfBytes = null, signedPdfBytes = null, lastRecord = null;
 
-// --- 署名埋め込み用に元PDFのデータだけ取得（表示は document.png の<img>が担当）---
 (async function loadPdfBytes(){
   try{
     const resp = await fetch(PDF_URL);
     if(!resp.ok) throw new Error("PDFの取得に失敗しました ("+resp.status+")");
     pdfBytes = await resp.arrayBuffer();
     refresh();
-  }catch(e){
-    showError("同意書PDFを取得できませんでした。"+e.message);
-  }
+  }catch(e){ showError("同意書PDFを取得できませんでした。"+e.message); }
 })();
 function showError(msg){ document.getElementById('errArea').innerHTML = `<div class="errbox">${msg}</div>`; }
 
-// ============ 手書きパッド共通 ============
-function makePad(canvas, onFirstInk){
+// ============ なめらか手書きエンジン（1キャンバス）============
+function attachPad(canvas){
   const ctx = canvas.getContext('2d');
-  let drawing=false, hasInk=false;
+  let drawing=false, hasInk=false, lx,ly,lmx,lmy;
   function setup(){
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width*dpr; canvas.height = rect.height*dpr;
-    ctx.scale(dpr,dpr); ctx.lineWidth=3.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#13294b';
+    canvas.width = Math.max(1,Math.round(rect.width*dpr));
+    canvas.height = Math.max(1,Math.round(rect.height*dpr));
+    ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr);
+    ctx.lineWidth=3.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#13294b';
   }
   setup();
-  // 指・Apple Pencil は touch、PCは mouse で扱う（iOS Safari で最も確実な方式）
   function pos(e){ const r=canvas.getBoundingClientRect();
     const t=(e.touches&&e.touches[0])?e.touches[0]:(e.changedTouches&&e.changedTouches[0])?e.changedTouches[0]:e;
     return {x:t.clientX-r.left, y:t.clientY-r.top}; }
-  // なめらかな手書き：直前点と中点を二次曲線でつなぐ（カクつき防止）
-  let lx,ly,lmx,lmy;
-  function ink(){ if(!hasInk){ hasInk=true; dbg('描画OK ✓'); if(onFirstInk) onFirstInk(); } }
-  function start(e){ if(e.cancelable) e.preventDefault(); drawing=true; dbg('タッチ検知 ✓');
-    const p=pos(e); lx=p.x; ly=p.y; lmx=p.x; lmy=p.y;
+  function start(e){ if(e.cancelable) e.preventDefault(); drawing=true; const p=pos(e);
+    lx=p.x; ly=p.y; lmx=p.x; lmy=p.y;
     ctx.beginPath(); ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2); ctx.fillStyle=ctx.strokeStyle; ctx.fill();
-    ink(); }
+    hasInk=true; if(onInk) onInk(); }
   function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault(); const p=pos(e);
     const mx=(lx+p.x)/2, my=(ly+p.y)/2;
     ctx.beginPath(); ctx.moveTo(lmx,lmy); ctx.quadraticCurveTo(lx,ly,mx,my); ctx.stroke();
-    lx=p.x; ly=p.y; lmx=mx; lmy=my; ink(); }
+    lx=p.x; ly=p.y; lmx=mx; lmy=my; hasInk=true; if(onInk) onInk(); }
   function end(){ drawing=false; }
+  let onInk=null;
   canvas.style.touchAction='none';
   canvas.addEventListener('touchstart',start,{passive:false});
   canvas.addEventListener('touchmove',move,{passive:false});
@@ -96,16 +89,10 @@ function makePad(canvas, onFirstInk){
   canvas.addEventListener('mousedown',start);
   canvas.addEventListener('mousemove',move);
   window.addEventListener('mouseup',end);
-  // 画面回転・リサイズ時にキャンバスを取り直す（座標ズレ防止）。描いた内容は保持
-  function resize(){
-    const prev = (canvas.width && canvas.height && hasInk) ? canvas.toDataURL() : null;
-    setup();
-    if(prev){ const im=new Image(); im.onload=function(){ const dpr=window.devicePixelRatio||1;
-      ctx.drawImage(im,0,0,canvas.width/dpr,canvas.height/dpr); }; im.src=prev; }
-  }
   return {
     get hasInk(){ return hasInk; },
-    resize,
+    set onInk(fn){ onInk=fn; },
+    resetSize(){ setup(); hasInk=false; },
     clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false; },
     trimmed(){
       const w=canvas.width,h=canvas.height,d=ctx.getImageData(0,0,w,h).data;
@@ -113,7 +100,7 @@ function makePad(canvas, onFirstInk){
       for(let y=0;y<h;y++)for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]!==0){f=true;
         if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;} }
       if(!f) return null;
-      const pad=6; minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w,maxX+pad);maxY=Math.min(h,maxY+pad);
+      const pad=8; minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w,maxX+pad);maxY=Math.min(h,maxY+pad);
       const tw=maxX-minX,th=maxY-minY,tc=document.createElement('canvas'); tc.width=tw;tc.height=th;
       tc.getContext('2d').drawImage(canvas,minX,minY,tw,th,0,0,tw,th);
       return {url:tc.toDataURL('image/png'), ratio:tw/th};
@@ -121,40 +108,82 @@ function makePad(canvas, onFirstInk){
   };
 }
 
-// --- 署名パッド ---
-const sigWrap=document.getElementById('sigWrap'), sigHint=document.getElementById('sigHint');
-const sigPad = makePad(document.getElementById('sigCanvas'), ()=>{ sigHint.style.display='none'; sigWrap.classList.add('filled'); refresh(); });
-document.getElementById('clearBtn').addEventListener('click',()=>{ sigPad.clear(); sigHint.style.display='flex'; sigWrap.classList.remove('filled'); refresh(); });
+// ============ 取得済みの手書き結果 ============
+const results = { sig:null, year:null, month:null, day:null };
+const TITLES = { sig:'ここにご署名ください', year:'「年（西暦）」を手書き　例：2026',
+                 month:'「月」を手書き　例：6', day:'「日」を手書き　例：2' };
+const previewCanvas = {
+  sig: document.getElementById('sigCanvas'),
+  year: document.querySelector('.pad[data-k="year"] canvas'),
+  month: document.querySelector('.pad[data-k="month"] canvas'),
+  day: document.querySelector('.pad[data-k="day"] canvas')
+};
 
-// --- 日付パッド3つ ---
-const datePads = {};
-document.querySelectorAll('.pad').forEach(div=>{
-  const k=div.dataset.k, cv=div.querySelector('canvas'), ph=div.querySelector('.ph');
-  datePads[k]=makePad(cv, ()=>{ ph.style.display='none'; div.classList.add('filled'); refresh(); });
-  datePads[k]._div=div; datePads[k]._ph=ph;
+// プレビュー（取得した手書きを元の枠に縮小表示）
+function renderPreview(key){
+  const cv = previewCanvas[key], res = results[key];
+  const rect = cv.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
+  cv.width=Math.max(1,Math.round(rect.width*dpr)); cv.height=Math.max(1,Math.round(rect.height*dpr));
+  const ctx=cv.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
+  if(!res) return;
+  const im=new Image();
+  im.onload=function(){
+    const cw=cv.width, ch=cv.height, pad=8*dpr;
+    let dw=cw-pad*2, dh=dw/res.ratio; if(dh>ch-pad*2){ dh=ch-pad*2; dw=dh*res.ratio; }
+    ctx.drawImage(im,(cw-dw)/2,(ch-dh)/2,dw,dh);
+  };
+  im.src=res.url;
+}
+
+// ============ フルスクリーン手書き ============
+const overlay=document.getElementById('sigOverlay');
+const ovPh=document.getElementById('ovPh');
+let ovPad=null, ovTarget=null;
+
+function openEditor(key){
+  ovTarget=key;
+  document.getElementById('ovTitle').textContent = TITLES[key];
+  overlay.classList.remove('hidden');
+  ovPh.style.display='flex';
+  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
+    if(!ovPad){ ovPad=attachPad(document.getElementById('ovCanvas')); ovPad.onInk=()=>{ ovPh.style.display='none'; }; }
+    ovPad.resetSize(); ovPad.clear();
+  }); });
+}
+function closeEditor(){ overlay.classList.add('hidden'); }
+
+document.getElementById('ovCancel').addEventListener('click',closeEditor);
+document.getElementById('ovClear').addEventListener('click',()=>{ if(ovPad){ ovPad.clear(); } ovPh.style.display='flex'; });
+document.getElementById('ovDone').addEventListener('click',()=>{
+  if(!ovPad){ closeEditor(); return; }
+  const t = ovPad.trimmed();
+  if(!t){ alert('まだ何も書かれていません。指やペンで書いてから「この内容で確定」を押してください。'); return; }
+  results[ovTarget]=t;
+  renderPreview(ovTarget);
+  // 枠を「記入済み」表示に
+  if(ovTarget==='sig'){ document.getElementById('sigWrap').classList.add('filled'); document.getElementById('sigHint').style.display='none'; }
+  else { const div=document.querySelector('.pad[data-k="'+ovTarget+'"]'); div.classList.add('filled'); div.querySelector('.tap-hint').style.display='none'; }
+  closeEditor(); refresh();
 });
-function clearAllDates(){ Object.values(datePads).forEach(p=>{ p.clear(); p._ph.style.display='flex'; p._div.classList.remove('filled'); }); refresh(); }
-document.getElementById('clearDateBtn').addEventListener('click',clearAllDates);
 
-// 画面回転・リサイズ時に全キャンバスを取り直す（横向きで指と線がズレる問題の対策）
-let _rzTimer=null;
-function resizeAllPads(){ sigPad.resize(); Object.values(datePads).forEach(p=>p.resize()); }
-window.addEventListener('resize', ()=>{ clearTimeout(_rzTimer); _rzTimer=setTimeout(resizeAllPads,200); });
-window.addEventListener('orientationchange', ()=>{ setTimeout(resizeAllPads,300); });
+// 枠タップで全画面手書きを開く
+document.getElementById('sigWrap').addEventListener('click',()=>openEditor('sig'));
+document.querySelectorAll('.pad').forEach(div=>{
+  div.addEventListener('click',()=>openEditor(div.dataset.k));
+});
 
 // 今日の日付を参考表示
-document.getElementById('todayBtn').addEventListener('click',()=>{
+document.getElementById('todayBtn').addEventListener('click',(e)=>{
+  e.stopPropagation();
   const n=new Date();
-  alert(`今日の日付は ${n.getFullYear()}年 ${n.getMonth()+1}月 ${n.getDate()}日 です。\n各枠に数字を手書きしてください。`);
+  alert(`今日の日付は ${n.getFullYear()}年 ${n.getMonth()+1}月 ${n.getDate()}日 です。`);
 });
 
-// --- 入力チェック ---
+// ============ 入力チェック・確定 ============
 const nameInput=document.getElementById('nameInput'), agreeChk=document.getElementById('agreeChk'), submitBtn=document.getElementById('submitBtn');
 [nameInput,agreeChk].forEach(el=>el.addEventListener('input',refresh));
-function datesFilled(){ return datePads.year.hasInk && datePads.month.hasInk && datePads.day.hasInk; }
-function refresh(){ submitBtn.disabled = !(nameInput.value.trim() && sigPad.hasInk && datesFilled() && agreeChk.checked && pdfBytes); }
+function refresh(){ submitBtn.disabled = !(nameInput.value.trim() && results.sig && results.year && results.month && results.day && agreeChk.checked && pdfBytes); }
 
-// --- 署名確定 → 元PDFに署名・手書き日付を埋め込み ---
 document.getElementById('submitBtn').addEventListener('click',async()=>{
   try{
     submitBtn.disabled=true; submitBtn.textContent='処理中…';
@@ -165,52 +194,35 @@ document.getElementById('submitBtn').addEventListener('click',async()=>{
     const pdfDoc = await PDFDocument.load(pdfBytes.slice(0));
     const page = pdfDoc.getPages()[0];
 
-    // 署名画像（上端を yTopAnchor に合わせて下方向へ配置 → 日付行と被らない）
-    const sig = sigPad.trimmed();
-    const png = await pdfDoc.embedPng(sig.url);
-    let sh=SIG_BOX.maxH, sw=sh*sig.ratio; if(sw>SIG_BOX.maxW){ sw=SIG_BOX.maxW; sh=sw/sig.ratio; }
+    // 署名
+    const png = await pdfDoc.embedPng(results.sig.url);
+    let sh=SIG_BOX.maxH, sw=sh*results.sig.ratio; if(sw>SIG_BOX.maxW){ sw=SIG_BOX.maxW; sh=sw/results.sig.ratio; }
     page.drawImage(png,{ x:SIG_BOX.x, y:PAGE_H-(SIG_BOX.yTopAnchor+sh), width:sw, height:sh });
 
-    // 手書き日付3つ（右端を漢字の直前に合わせる）
+    // 手書き日付
     for(const k of ['year','month','day']){
-      const t = datePads[k].trimmed(); if(!t) continue;
-      const cfg = DATE_PADS[k];
-      let h=cfg.maxH, w=h*t.ratio; if(w>cfg.maxW){ w=cfg.maxW; h=w/t.ratio; }
-      const img = await pdfDoc.embedPng(t.url);
+      const r=results[k]; if(!r) continue; const cfg=DATE_PADS[k];
+      let h=cfg.maxH, w=h*r.ratio; if(w>cfg.maxW){ w=cfg.maxW; h=w/r.ratio; }
+      const img=await pdfDoc.embedPng(r.url);
       page.drawImage(img,{ x:cfg.rightX-w, y:PAGE_H-DATE_LINE_TOP, width:w, height:h });
     }
 
     signedPdfBytes = await pdfDoc.save();
-
     const stamp = now.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
     lastRecord = { name:nameInput.value.trim(), signedAt:now.toISOString(), signedAtLocal:stamp, docVersion:DOC_VERSION };
     saveRecord(lastRecord);
 
-    // クラウド保管庫へ自動アップロード（設定済みの場合）
     let up = { ok:false, skipped:true };
-    if(supaEnabled){
-      submitBtn.textContent='送信中…';
-      up = await uploadSigned(signedPdfBytes, lastRecord);
-    }
+    if(supaEnabled){ submitBtn.textContent='送信中…'; up = await uploadSigned(signedPdfBytes, lastRecord); }
 
-    const head = document.getElementById('doneHead');
-    const sub  = document.getElementById('doneSub');
-    if(up.ok){
-      head.textContent='送信が完了しました';
-      sub.textContent='署名済みの同意書を担当者へお送りしました。これで完了です（送り返す必要はありません）。';
-    }else if(up.skipped){
-      head.textContent='署名が完了しました';
-      sub.textContent='署名と日付を反映した同意書（PDF）を保存できます。';
-    }else{
-      head.textContent='署名は完了しました（送信のみ未完了）';
-      sub.textContent='通信エラーで自動送信ができませんでした。お手数ですが下のボタンでPDFを保存し、担当者へお送りください。';
-      showError('自動送信に失敗しました：'+(up.error||'不明なエラー'));
-    }
+    const head=document.getElementById('doneHead'), sub=document.getElementById('doneSub');
+    if(up.ok){ head.textContent='送信が完了しました'; sub.textContent='署名済みの同意書を担当者へお送りしました。これで完了です（送り返す必要はありません）。'; }
+    else if(up.skipped){ head.textContent='署名が完了しました'; sub.textContent='署名と日付を反映した同意書（PDF）を保存できます。'; }
+    else { head.textContent='署名は完了しました（送信のみ未完了）'; sub.textContent='通信エラーで自動送信ができませんでした。下のボタンでPDFを保存し、担当者へお送りください。'; showError('自動送信に失敗しました：'+(up.error||'不明なエラー')); }
 
     document.getElementById('formView').classList.add('hidden');
     document.getElementById('doneView').classList.remove('hidden');
-    document.getElementById('recordInfo').textContent =
-      `署名者：${lastRecord.name}／受付日時：${stamp}／文面：${DOC_VERSION}`;
+    document.getElementById('recordInfo').textContent = `署名者：${lastRecord.name}／受付日時：${stamp}／文面：${DOC_VERSION}`;
     window.scrollTo(0,0);
   }catch(e){
     submitBtn.disabled=false; submitBtn.textContent='同意して署名を確定する';
@@ -231,12 +243,15 @@ function dateTag(){const d=new Date();return `${d.getFullYear()}${String(d.getMo
 
 document.getElementById('againBtn').addEventListener('click',()=>{
   nameInput.value=''; agreeChk.checked=false;
-  sigPad.clear(); sigHint.style.display='flex'; sigWrap.classList.remove('filled');
-  clearAllDates(); signedPdfBytes=null; refresh();
+  results.sig=results.year=results.month=results.day=null;
+  ['sig','year','month','day'].forEach(k=>{ const cv=previewCanvas[k]; cv.getContext('2d').clearRect(0,0,cv.width,cv.height); });
+  document.getElementById('sigWrap').classList.remove('filled'); document.getElementById('sigHint').style.display='flex';
+  document.querySelectorAll('.pad').forEach(d=>{ d.classList.remove('filled'); d.querySelector('.tap-hint').style.display='flex'; });
+  signedPdfBytes=null; refresh();
   document.getElementById('doneView').classList.add('hidden');
   document.getElementById('formView').classList.remove('hidden');
   window.scrollTo(0,0);
 });
 
 document.getElementById('metaInfo').textContent = `文面バージョン：${DOC_VERSION}`;
-dbg(`準備OK（タッチ方式）`);
+dbg('準備OK（タップして手書き）');
