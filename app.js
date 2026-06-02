@@ -58,7 +58,8 @@ function showError(msg){ document.getElementById('errArea').innerHTML = `<div cl
 // ============ なめらか手書きエンジン（1キャンバス）============
 function attachPad(canvas){
   const ctx = canvas.getContext('2d');
-  let drawing=false, hasInk=false, lx,ly,lmx,lmy;
+  let drawing=false, hasInk=false, lx,ly,lmx,lmy, sx,sy;
+  const SMOOTH = 0.5; // 入力点の平滑化（手ブレ低減）0=最大平滑 1=平滑なし
   function setup(){
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -72,13 +73,15 @@ function attachPad(canvas){
     const t=(e.touches&&e.touches[0])?e.touches[0]:(e.changedTouches&&e.changedTouches[0])?e.changedTouches[0]:e;
     return {x:t.clientX-r.left, y:t.clientY-r.top}; }
   function start(e){ if(e.cancelable) e.preventDefault(); drawing=true; const p=pos(e);
-    lx=p.x; ly=p.y; lmx=p.x; lmy=p.y;
+    lx=p.x; ly=p.y; lmx=p.x; lmy=p.y; sx=p.x; sy=p.y;
     ctx.beginPath(); ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2); ctx.fillStyle=ctx.strokeStyle; ctx.fill();
     hasInk=true; if(onInk) onInk(); }
-  function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault(); const p=pos(e);
-    const mx=(lx+p.x)/2, my=(ly+p.y)/2;
+  function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault(); const raw=pos(e);
+    // 手ブレ低減：生の指位置へ少しずつ追従させる
+    sx += (raw.x - sx)*SMOOTH; sy += (raw.y - sy)*SMOOTH;
+    const mx=(lx+sx)/2, my=(ly+sy)/2;
     ctx.beginPath(); ctx.moveTo(lmx,lmy); ctx.quadraticCurveTo(lx,ly,mx,my); ctx.stroke();
-    lx=p.x; ly=p.y; lmx=mx; lmy=my; hasInk=true; if(onInk) onInk(); }
+    lx=sx; ly=sy; lmx=mx; lmy=my; hasInk=true; if(onInk) onInk(); }
   function end(){ drawing=false; }
   let onInk=null;
   canvas.style.touchAction='none';
