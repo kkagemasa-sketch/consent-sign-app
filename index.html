@@ -69,10 +69,12 @@
   /* フルスクリーン手書きオーバーレイ */
   .ov{position:fixed;inset:0;background:#fff;z-index:1000;display:flex;flex-direction:column;}
   .ov.hidden{display:none;}
-  .ov-head{padding:12px 14px;background:var(--brand);color:#fff;flex:none;}
-  .ov-head #ovTitle{font-size:16px;font-weight:700;}
-  .ov-head .ov-hint{display:block;font-size:12px;opacity:.9;margin-top:2px;}
-  .ov-canvas-wrap{position:relative;flex:1;margin:10px;border:2px dashed var(--brand);border-radius:10px;background:#fafbfa;overflow:hidden;}
+  .ov-head{padding:7px 12px;background:var(--brand);color:#fff;flex:none;}
+  .ov-head #ovTitle{font-size:15px;font-weight:700;}
+  .ov-canvas-wrap{position:relative;flex:1;margin:5px;border:2px dashed var(--brand);border-radius:8px;
+    background-color:#fafbfa;
+    background-image:linear-gradient(to bottom, transparent calc(74% - 1px), #c7dbcf 74%, transparent calc(74% + 1px));
+    overflow:hidden;}
   #ovCanvas{display:block;width:100%;height:100%;touch-action:none;}
   .ov-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c2cbc5;font-size:18px;pointer-events:none;text-align:center;padding:20px;}
   /* 縦向きのとき「横にして」を強調表示 */
@@ -82,8 +84,8 @@
   .ov-rotate .rot-text{font-size:24px;font-weight:800;margin-top:14px;}
   .ov-rotate .rot-sub{font-size:15px;margin-top:8px;color:#9a6312;}
   @keyframes rotwig{0%,100%{transform:rotate(-12deg);}50%{transform:rotate(78deg);}}
-  .ov-btns{display:flex;gap:10px;padding:12px 14px;flex:none;}
-  .ov-btns .btn{flex:1;}
+  .ov-btns{display:flex;gap:8px;padding:8px 10px;flex:none;}
+  .ov-btns .btn{flex:1;padding:11px 8px;}
   .errbox{background:#fdecea;color:#a32b20;border:1px solid #f5c6c0;border-radius:8px;
     padding:12px;font-size:13px;margin-bottom:16px;}
 </style>
@@ -160,7 +162,6 @@
 <div id="sigOverlay" class="ov hidden">
   <div class="ov-head">
     <span id="ovTitle">ここに署名してください</span>
-    <span class="ov-hint">画面を横向きにすると、さらに広く書けます</span>
   </div>
   <div class="ov-canvas-wrap">
     <canvas id="ovCanvas"></canvas>
@@ -178,6 +179,6 @@
   </div>
 </div>
 
-<script src="app.js?b=14"></script>
+<script src="app.js?b=15"></script>
 </body>
 </html>
