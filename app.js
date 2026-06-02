@@ -56,14 +56,14 @@ function showError(msg){ document.getElementById('errArea').innerHTML = `<div cl
 function attachPad(canvas){
   const ctx = canvas.getContext('2d');
   let drawing=false, hasInk=false, lx,ly,lmx,lmy, sx,sy;
-  const SMOOTH = 0.5; // 入力点の平滑化（手ブレ低減）0=最大平滑 1=平滑なし
+  const SMOOTH = 0.32; // 入力点の平滑化（手ブレ低減）0=最大平滑 1=平滑なし。小さいほど滑らか
   function setup(){
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.max(1,Math.round(rect.width*dpr));
     canvas.height = Math.max(1,Math.round(rect.height*dpr));
     ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr);
-    ctx.lineWidth=3.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#13294b';
+    ctx.lineWidth=3.8; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#13294b';
   }
   setup();
   function pos(e){ const r=canvas.getBoundingClientRect();
