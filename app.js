@@ -36,12 +36,9 @@ async function uploadSigned(bytes, rec){
 // 埋め込み座標
 const PAGE_H = 841.92;
 const SIG_BOX  = { x: 85, yTopAnchor: 658, maxW: 220, maxH: 46 };
-const DATE_LINE_TOP = 644;
-const DATE_PADS = {
-  year:  { rightX: 104, maxW: 30, maxH: 22 },
-  month: { rightX: 153, maxW: 33, maxH: 22 },
-  day:   { rightX: 204, maxW: 33, maxH: 22 }
-};
+// 日付は自動入力（テキストで記入）。各数字の左X位置と、行のベースライン
+const DATE_BASELINE_TOP = 644;
+const DATE_TEXT = { yearX: 78, monthX: 140, dayX: 190, size: 12 };
 
 let pdfBytes = null, signedPdfBytes = null, lastRecord = null;
 
@@ -111,16 +108,16 @@ function attachPad(canvas){
   };
 }
 
-// ============ 取得済みの手書き結果 ============
-const results = { sig:null, year:null, month:null, day:null };
-const TITLES = { sig:'ここにご署名ください', year:'「年（西暦）」を手書き　例：2026',
-                 month:'「月」を手書き　例：6', day:'「日」を手書き　例：2' };
-const previewCanvas = {
-  sig: document.getElementById('sigCanvas'),
-  year: document.querySelector('.pad[data-k="year"] canvas'),
-  month: document.querySelector('.pad[data-k="month"] canvas'),
-  day: document.querySelector('.pad[data-k="day"] canvas')
-};
+// ============ 取得済みの手書き結果（署名のみ。日付は自動）============
+const results = { sig:null };
+const TITLES = { sig:'ここにご署名ください' };
+const previewCanvas = { sig: document.getElementById('sigCanvas') };
+
+// 本日の日付を画面に表示
+(function(){ const n=new Date();
+  const el=document.getElementById('autoDate');
+  if(el) el.textContent = `${n.getFullYear()}年 ${n.getMonth()+1}月 ${n.getDate()}日`;
+})();
 
 // プレビュー（取得した手書きを元の枠に縮小表示）
 function renderPreview(key){
@@ -193,23 +190,13 @@ document.getElementById('ovDone').addEventListener('click',()=>{
   closeEditor(); refresh();
 });
 
-// 枠タップで全画面手書きを開く
+// 署名欄タップで全画面手書きを開く
 document.getElementById('sigWrap').addEventListener('click',()=>openEditor('sig'));
-document.querySelectorAll('.pad').forEach(div=>{
-  div.addEventListener('click',()=>openEditor(div.dataset.k));
-});
-
-// 今日の日付を参考表示
-document.getElementById('todayBtn').addEventListener('click',(e)=>{
-  e.stopPropagation();
-  const n=new Date();
-  alert(`今日の日付は ${n.getFullYear()}年 ${n.getMonth()+1}月 ${n.getDate()}日 です。`);
-});
 
 // ============ 入力チェック・確定 ============
 const nameInput=document.getElementById('nameInput'), agreeChk=document.getElementById('agreeChk'), submitBtn=document.getElementById('submitBtn');
 [nameInput,agreeChk].forEach(el=>el.addEventListener('input',refresh));
-function refresh(){ submitBtn.disabled = !(nameInput.value.trim() && results.sig && results.year && results.month && results.day && agreeChk.checked && pdfBytes); }
+function refresh(){ submitBtn.disabled = !(nameInput.value.trim() && results.sig && agreeChk.checked && pdfBytes); }
 
 document.getElementById('submitBtn').addEventListener('click',async()=>{
   try{
@@ -217,7 +204,7 @@ document.getElementById('submitBtn').addEventListener('click',async()=>{
     if(typeof PDFLib==='undefined'){ submitBtn.disabled=false; submitBtn.textContent='同意して署名を確定する';
       showError('準備中です。数秒おいてから、もう一度「確定」を押してください。'); return; }
     const now=new Date();
-    const { PDFDocument } = PDFLib;
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const pdfDoc = await PDFDocument.load(pdfBytes.slice(0));
     const page = pdfDoc.getPages()[0];
 
@@ -226,13 +213,12 @@ document.getElementById('submitBtn').addEventListener('click',async()=>{
     let sh=SIG_BOX.maxH, sw=sh*results.sig.ratio; if(sw>SIG_BOX.maxW){ sw=SIG_BOX.maxW; sh=sw/results.sig.ratio; }
     page.drawImage(png,{ x:SIG_BOX.x, y:PAGE_H-(SIG_BOX.yTopAnchor+sh), width:sw, height:sh });
 
-    // 手書き日付
-    for(const k of ['year','month','day']){
-      const r=results[k]; if(!r) continue; const cfg=DATE_PADS[k];
-      let h=cfg.maxH, w=h*r.ratio; if(w>cfg.maxW){ w=cfg.maxW; h=w/r.ratio; }
-      const img=await pdfDoc.embedPng(r.url);
-      page.drawImage(img,{ x:cfg.rightX-w, y:PAGE_H-DATE_LINE_TOP, width:w, height:h });
-    }
+    // 日付（本日を自動記入。数字なので標準フォントでOK）
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const yBase = PAGE_H - DATE_BASELINE_TOP, dcol = rgb(0.07,0.16,0.45);
+    page.drawText(String(now.getFullYear()), { x:DATE_TEXT.yearX,  y:yBase, size:DATE_TEXT.size, font, color:dcol });
+    page.drawText(String(now.getMonth()+1),  { x:DATE_TEXT.monthX, y:yBase, size:DATE_TEXT.size, font, color:dcol });
+    page.drawText(String(now.getDate()),     { x:DATE_TEXT.dayX,   y:yBase, size:DATE_TEXT.size, font, color:dcol });
 
     signedPdfBytes = await pdfDoc.save();
     const stamp = now.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -270,10 +256,9 @@ function dateTag(){const d=new Date();return `${d.getFullYear()}${String(d.getMo
 
 document.getElementById('againBtn').addEventListener('click',()=>{
   nameInput.value=''; agreeChk.checked=false;
-  results.sig=results.year=results.month=results.day=null;
-  ['sig','year','month','day'].forEach(k=>{ const cv=previewCanvas[k]; cv.getContext('2d').clearRect(0,0,cv.width,cv.height); });
+  results.sig=null;
+  const sc=previewCanvas.sig; sc.getContext('2d').clearRect(0,0,sc.width,sc.height);
   document.getElementById('sigWrap').classList.remove('filled'); document.getElementById('sigHint').style.display='flex';
-  document.querySelectorAll('.pad').forEach(d=>{ d.classList.remove('filled'); d.querySelector('.tap-hint').style.display='flex'; });
   signedPdfBytes=null; refresh();
   document.getElementById('doneView').classList.add('hidden');
   document.getElementById('formView').classList.remove('hidden');

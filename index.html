@@ -114,21 +114,9 @@
       </div>
 
       <div class="field">
-        <label>日付（手書き）<span class="req">必須</span>
-          <button class="btn btn-clear" id="todayBtn" type="button" style="float:right;font-weight:600;">今日の日付を見る</button>
-        </label>
-        <div class="date-row">
-          <div class="date-cell"><span class="dlab" id="lblY">年（西暦）</span>
-            <div class="pad-wrap"><div class="pad" data-k="year"><canvas></canvas><div class="tap-hint">タップして「年」を手書き</div></div><span class="kanji">年</span></div>
-          </div>
-          <div class="date-cell"><span class="dlab">月</span>
-            <div class="pad-wrap"><div class="pad" data-k="month"><canvas></canvas><div class="tap-hint">タップして「月」を手書き</div></div><span class="kanji">月</span></div>
-          </div>
-          <div class="date-cell"><span class="dlab">日</span>
-            <div class="pad-wrap"><div class="pad" data-k="day"><canvas></canvas><div class="tap-hint">タップして「日」を手書き</div></div><span class="kanji">日</span></div>
-          </div>
-        </div>
-        <div class="sig-bar"><small>枠をタップすると大きな画面で書けます（例：2026 / 6 / 2）</small></div>
+        <label>日付</label>
+        <div id="autoDate" style="font-size:16px;font-weight:600;color:var(--brand-d);padding:12px;background:#f0f6f3;border-radius:8px;">本日の日付が自動で入ります</div>
+        <small style="color:var(--muted);">署名した日（本日）が同意書に自動で記入されます。手書きは不要です。</small>
       </div>
 
       <div class="field">
@@ -190,6 +178,6 @@
   </div>
 </div>
 
-<script src="app.js?b=13"></script>
+<script src="app.js?b=14"></script>
 </body>
 </html>
