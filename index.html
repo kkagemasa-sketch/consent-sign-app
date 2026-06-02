@@ -4,9 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>保険募集同意書 オンライン署名</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="vendor/pdf-lib.min.js"></script>
 <style>
   :root{ --brand:#1f6f54; --brand-d:#16513d; --line:#d8ddd9; --bg:#f4f6f5;
     --ink:#222; --muted:#667; --warn:#c0392b; }
@@ -21,7 +19,7 @@
     padding:18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
   .pdf-area{background:#e9ece9;border:1px solid var(--line);border-radius:10px;
     padding:10px;text-align:center;overflow:auto;max-height:62vh;}
-  #pdfCanvas{width:100%;max-width:680px;box-shadow:0 2px 8px rgba(0,0,0,.12);background:#fff;}
+  #docImg{width:100%;max-width:680px;box-shadow:0 2px 8px rgba(0,0,0,.12);background:#fff;display:block;margin:0 auto;}
   .loading{padding:40px;color:var(--muted);font-size:14px;}
   .field{margin-bottom:16px;}
   label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;}
@@ -84,7 +82,9 @@
       <label style="margin-bottom:10px;">同意書の内容（全文）<span style="font-weight:400;color:var(--muted);font-size:12px;margin-left:6px;">下までスクロールしてご確認ください</span></label>
       <div class="pdf-area">
         <div class="loading" id="pdfLoading">同意書を読み込んでいます…</div>
-        <canvas id="pdfCanvas" style="display:none;"></canvas>
+        <img id="docImg" src="document.png" alt="保険募集同意書" style="display:none;"
+             onload="document.getElementById('pdfLoading').style.display='none'; this.style.display='block';"
+             onerror="document.getElementById('pdfLoading').textContent='画像の読み込みに失敗しました';">
       </div>
     </div>
 
@@ -148,7 +148,7 @@
     </div>
   </div>
 
-  <p class="footnote">承諾書署名アプリ 試作版 v0.3（PDF版・手書き日付）／ 署名記録はこの端末内にのみ保存されます</p>
+  <p class="footnote">承諾書署名アプリ 試作版 v0.4（オフライン同梱版・手書き日付）</p>
 </main>
 
 <script>
@@ -189,34 +189,17 @@ const DATE_PADS = {                                             // 各数字の�
   day:   { rightX: 204, maxW: 33, maxH: 22 }
 };
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
 let pdfBytes = null, signedPdfBytes = null, lastRecord = null;
 
-// --- 元PDFを取得して表示 ---
-(async function loadPdf(){
+// --- 署名埋め込み用に元PDFのデータだけ取得（表示は document.png の<img>が担当）---
+(async function loadPdfBytes(){
   try{
     const resp = await fetch(PDF_URL);
-    if(!resp.ok) throw new Error("PDFの読み込みに失敗しました ("+resp.status+")");
+    if(!resp.ok) throw new Error("PDFの取得に失敗しました ("+resp.status+")");
     pdfBytes = await resp.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({
-      data: pdfBytes.slice(0),
-      cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
-      cMapPacked: true,
-      standardFontDataUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/"
-    }).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({scale: 2});
-    const cv = document.getElementById('pdfCanvas');
-    cv.width = viewport.width; cv.height = viewport.height;
-    await page.render({canvasContext: cv.getContext('2d'), viewport}).promise;
-    document.getElementById('pdfLoading').style.display='none';
-    cv.style.display='block';
     refresh();
   }catch(e){
-    document.getElementById('pdfLoading').textContent='';
-    showError("同意書PDFを表示できませんでした。"+e.message);
+    showError("同意書PDFを取得できませんでした。"+e.message);
   }
 })();
 function showError(msg){ document.getElementById('errArea').innerHTML = `<div class="errbox">${msg}</div>`; }
