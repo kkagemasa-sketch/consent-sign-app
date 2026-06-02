@@ -138,19 +138,43 @@ function renderPreview(key){
 // ============ フルスクリーン手書き ============
 const overlay=document.getElementById('sigOverlay');
 const ovPh=document.getElementById('ovPh');
+const ovRotate=document.getElementById('ovRotate');
 let ovPad=null, ovTarget=null;
+
+function isPortrait(){
+  if(window.matchMedia) return window.matchMedia('(orientation: portrait)').matches;
+  return window.innerHeight >= window.innerWidth;
+}
+// 署名は縦向きだと書きにくい→縦のときは「横にして」を全面表示し、横にしたらキャンバスを使えるようにする
+let _ovLastNeed=null;
+function updateOvOrientation(){
+  if(overlay.classList.contains('hidden')){ _ovLastNeed=null; return; }
+  const needLandscape = (ovTarget==='sig' && isPortrait());
+  if(needLandscape===_ovLastNeed) return; // 状態が変わったときだけ処理（描画中の誤クリア防止）
+  _ovLastNeed=needLandscape;
+  if(needLandscape){
+    ovRotate.style.display='flex';
+  }else{
+    ovRotate.style.display='none';
+    if(ovPad){ ovPad.resetSize(); ovPad.clear(); ovPh.style.display='flex'; }
+  }
+}
 
 function openEditor(key){
   ovTarget=key;
   document.getElementById('ovTitle').textContent = TITLES[key];
   overlay.classList.remove('hidden');
   ovPh.style.display='flex';
+  _ovLastNeed=null;
   requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
     if(!ovPad){ ovPad=attachPad(document.getElementById('ovCanvas')); ovPad.onInk=()=>{ ovPh.style.display='none'; }; }
     ovPad.resetSize(); ovPad.clear();
+    updateOvOrientation();
   }); });
 }
 function closeEditor(){ overlay.classList.add('hidden'); }
+window.addEventListener('resize', ()=>{ if(!overlay.classList.contains('hidden')) updateOvOrientation(); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(updateOvOrientation,300); });
 
 document.getElementById('ovCancel').addEventListener('click',closeEditor);
 document.getElementById('ovClear').addEventListener('click',()=>{ if(ovPad){ ovPad.clear(); } ovPh.style.display='flex'; });
