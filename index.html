@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>保険募集同意書 オンライン署名</title>
-<script src="vendor/pdf-lib.min.js"></script>
+<script defer src="vendor/pdf-lib.min.js"></script>
 <style>
   :root{ --brand:#1f6f54; --brand-d:#16513d; --line:#d8ddd9; --bg:#f4f6f5;
     --ink:#222; --muted:#667; --warn:#c0392b; }
@@ -154,6 +154,7 @@
 <script>
 function dbg(s){ var e=document.getElementById('dbg'); if(e){ e.textContent='診断: '+s; } }
 window.addEventListener('error', function(ev){ dbg('エラー → '+ev.message+' (行'+ev.lineno+')'); });
+dbg('起動中…(スクリプト開始)');
 const PDF_URL = "document.pdf";
 const DOC_VERSION = "hoken-boshu-doui-v1";
 const DOC_TITLE = "保険募集同意書";
@@ -286,6 +287,8 @@ function refresh(){ submitBtn.disabled = !(nameInput.value.trim() && sigPad.hasI
 document.getElementById('submitBtn').addEventListener('click',async()=>{
   try{
     submitBtn.disabled=true; submitBtn.textContent='処理中…';
+    if(typeof PDFLib==='undefined'){ submitBtn.disabled=false; submitBtn.textContent='同意して署名を確定する';
+      showError('準備中です。数秒おいてから、もう一度「確定」を押してください。'); return; }
     const now=new Date();
     const { PDFDocument } = PDFLib;
     const pdfDoc = await PDFDocument.load(pdfBytes.slice(0));
