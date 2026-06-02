@@ -37,8 +37,9 @@ async function uploadSigned(bytes, rec){
 
 // 実測座標（PyMuPDF・原点は左上/y下向き、ページ高さ841.92pt）。pdf-libは左下原点なので y=PAGE_H-yTop で変換
 const PAGE_H = 841.92;
-const SIG_BOX  = { x: 85, yTop: 681, w: 210, h: 46 };          // 「ご署名:」の右
-const DATE_LINE_TOP = 646;                                      // 「年 月 日」の下端
+// 署名: 「ご署名:」の右。日付行と被らないよう上端を658に下げ、下方向へ伸ばす
+const SIG_BOX  = { x: 85, yTopAnchor: 658, maxW: 220, maxH: 46 };
+const DATE_LINE_TOP = 644;                                      // 「年 月 日」の下端（やや上げて署名と離す）
 const DATE_PADS = {                                             // 各数字の右端を漢字の直前に合わせる
   year:  { rightX: 104, maxW: 30, maxH: 22 },
   month: { rightX: 153, maxW: 33, maxH: 22 },
@@ -90,8 +91,16 @@ function makePad(canvas, onFirstInk){
   canvas.addEventListener('mousedown',start);
   canvas.addEventListener('mousemove',move);
   window.addEventListener('mouseup',end);
+  // 画面回転・リサイズ時にキャンバスを取り直す（座標ズレ防止）。描いた内容は保持
+  function resize(){
+    const prev = (canvas.width && canvas.height && hasInk) ? canvas.toDataURL() : null;
+    setup();
+    if(prev){ const im=new Image(); im.onload=function(){ const dpr=window.devicePixelRatio||1;
+      ctx.drawImage(im,0,0,canvas.width/dpr,canvas.height/dpr); }; im.src=prev; }
+  }
   return {
     get hasInk(){ return hasInk; },
+    resize,
     clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false; },
     trimmed(){
       const w=canvas.width,h=canvas.height,d=ctx.getImageData(0,0,w,h).data;
@@ -122,6 +131,12 @@ document.querySelectorAll('.pad').forEach(div=>{
 function clearAllDates(){ Object.values(datePads).forEach(p=>{ p.clear(); p._ph.style.display='flex'; p._div.classList.remove('filled'); }); refresh(); }
 document.getElementById('clearDateBtn').addEventListener('click',clearAllDates);
 
+// 画面回転・リサイズ時に全キャンバスを取り直す（横向きで指と線がズレる問題の対策）
+let _rzTimer=null;
+function resizeAllPads(){ sigPad.resize(); Object.values(datePads).forEach(p=>p.resize()); }
+window.addEventListener('resize', ()=>{ clearTimeout(_rzTimer); _rzTimer=setTimeout(resizeAllPads,200); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(resizeAllPads,300); });
+
 // 今日の日付を参考表示
 document.getElementById('todayBtn').addEventListener('click',()=>{
   const n=new Date();
@@ -145,11 +160,11 @@ document.getElementById('submitBtn').addEventListener('click',async()=>{
     const pdfDoc = await PDFDocument.load(pdfBytes.slice(0));
     const page = pdfDoc.getPages()[0];
 
-    // 署名画像
+    // 署名画像（上端を yTopAnchor に合わせて下方向へ配置 → 日付行と被らない）
     const sig = sigPad.trimmed();
     const png = await pdfDoc.embedPng(sig.url);
-    let sh=SIG_BOX.h, sw=sh*sig.ratio; if(sw>SIG_BOX.w){ sw=SIG_BOX.w; sh=sw/sig.ratio; }
-    page.drawImage(png,{ x:SIG_BOX.x, y:PAGE_H-SIG_BOX.yTop, width:sw, height:sh });
+    let sh=SIG_BOX.maxH, sw=sh*sig.ratio; if(sw>SIG_BOX.maxW){ sw=SIG_BOX.maxW; sh=sw/sig.ratio; }
+    page.drawImage(png,{ x:SIG_BOX.x, y:PAGE_H-(SIG_BOX.yTopAnchor+sh), width:sw, height:sh });
 
     // 手書き日付3つ（右端を漢字の直前に合わせる）
     for(const k of ['year','month','day']){
