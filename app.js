@@ -55,8 +55,7 @@ function showError(msg){ document.getElementById('errArea').innerHTML = `<div cl
 // ============ なめらか手書きエンジン（1キャンバス）============
 function attachPad(canvas){
   const ctx = canvas.getContext('2d');
-  let drawing=false, hasInk=false, lx,ly,lmx,lmy, sx,sy;
-  const SMOOTH = 0.32; // 入力点の平滑化（手ブレ低減）0=最大平滑 1=平滑なし。小さいほど滑らか
+  let drawing=false, hasInk=false, lx,ly,lmx,lmy;
   function setup(){
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -70,16 +69,22 @@ function attachPad(canvas){
     const t=(e.touches&&e.touches[0])?e.touches[0]:(e.changedTouches&&e.changedTouches[0])?e.changedTouches[0]:e;
     return {x:t.clientX-r.left, y:t.clientY-r.top}; }
   function start(e){ if(e.cancelable) e.preventDefault(); drawing=true; const p=pos(e);
-    lx=p.x; ly=p.y; lmx=p.x; lmy=p.y; sx=p.x; sy=p.y;
+    lx=p.x; ly=p.y; lmx=p.x; lmy=p.y;
     ctx.beginPath(); ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2); ctx.fillStyle=ctx.strokeStyle; ctx.fill();
     hasInk=true; if(onInk) onInk(); }
-  function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault(); const raw=pos(e);
-    // 手ブレ低減：生の指位置へ少しずつ追従させる
-    sx += (raw.x - sx)*SMOOTH; sy += (raw.y - sy)*SMOOTH;
-    const mx=(lx+sx)/2, my=(ly+sy)/2;
+  // 生の指位置をそのまま使用（遅延なし）。なめらかさは中点を通る二次曲線だけで担保
+  function seg(p){ const mx=(lx+p.x)/2, my=(ly+p.y)/2;
     ctx.beginPath(); ctx.moveTo(lmx,lmy); ctx.quadraticCurveTo(lx,ly,mx,my); ctx.stroke();
-    lx=sx; ly=sy; lmx=mx; lmy=my; hasInk=true; if(onInk) onInk(); }
-  function end(){ drawing=false; }
+    lx=p.x; ly=p.y; lmx=mx; lmy=my; }
+  function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault();
+    // 高速移動で間引かれた中間点も拾う（iOS/Chrome対応）
+    if(e.getCoalescedEvents){ const cs=e.getCoalescedEvents(); if(cs && cs.length){ for(const ce of cs) seg(pos(ce)); hasInk=true; if(onInk)onInk(); return; } }
+    seg(pos(e)); hasInk=true; if(onInk) onInk(); }
+  function end(e){ if(!drawing)return; drawing=false;
+    // 書き終わりの線を、実際に指を離した位置まで延ばす（線が短く切れるのを防ぐ）
+    let ex=lx, ey=ly;
+    if(e){ const p=pos(e); if(p && isFinite(p.x) && isFinite(p.y)){ ex=p.x; ey=p.y; } }
+    ctx.beginPath(); ctx.moveTo(lmx,lmy); ctx.lineTo(ex,ey); ctx.stroke(); }
   let onInk=null;
   canvas.style.touchAction='none';
   canvas.addEventListener('touchstart',start,{passive:false});
@@ -166,11 +171,11 @@ function openEditor(key){
   overlay.classList.remove('hidden');
   ovPh.style.display='flex';
   _ovLastNeed=null;
-  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
+  setTimeout(()=>{
     if(!ovPad){ ovPad=attachPad(document.getElementById('ovCanvas')); ovPad.onInk=()=>{ ovPh.style.display='none'; }; }
     ovPad.resetSize(); ovPad.clear();
     updateOvOrientation();
-  }); });
+  }, 60);
 }
 function closeEditor(){ overlay.classList.add('hidden'); }
 window.addEventListener('resize', ()=>{ if(!overlay.classList.contains('hidden')) updateOvOrientation(); });
