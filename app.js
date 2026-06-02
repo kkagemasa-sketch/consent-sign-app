@@ -69,19 +69,24 @@ function makePad(canvas, onFirstInk){
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width*dpr; canvas.height = rect.height*dpr;
-    ctx.scale(dpr,dpr); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#13294b';
+    ctx.scale(dpr,dpr); ctx.lineWidth=3.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#13294b';
   }
   setup();
   // 指・Apple Pencil は touch、PCは mouse で扱う（iOS Safari で最も確実な方式）
   function pos(e){ const r=canvas.getBoundingClientRect();
     const t=(e.touches&&e.touches[0])?e.touches[0]:(e.changedTouches&&e.changedTouches[0])?e.changedTouches[0]:e;
     return {x:t.clientX-r.left, y:t.clientY-r.top}; }
-  function start(e){ if(e.cancelable) e.preventDefault(); drawing=true;
-    dbg('タッチ検知 ✓'); const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y);
-    ctx.lineTo(p.x+0.1,p.y+0.1); ctx.stroke();
-    if(!hasInk){ hasInk=true; dbg('描画OK ✓'); if(onFirstInk) onFirstInk(); } }
-  function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault(); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke();
-    if(!hasInk){ hasInk=true; dbg('描画OK ✓'); if(onFirstInk) onFirstInk(); } }
+  // なめらかな手書き：直前点と中点を二次曲線でつなぐ（カクつき防止）
+  let lx,ly,lmx,lmy;
+  function ink(){ if(!hasInk){ hasInk=true; dbg('描画OK ✓'); if(onFirstInk) onFirstInk(); } }
+  function start(e){ if(e.cancelable) e.preventDefault(); drawing=true; dbg('タッチ検知 ✓');
+    const p=pos(e); lx=p.x; ly=p.y; lmx=p.x; lmy=p.y;
+    ctx.beginPath(); ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2); ctx.fillStyle=ctx.strokeStyle; ctx.fill();
+    ink(); }
+  function move(e){ if(!drawing)return; if(e.cancelable) e.preventDefault(); const p=pos(e);
+    const mx=(lx+p.x)/2, my=(ly+p.y)/2;
+    ctx.beginPath(); ctx.moveTo(lmx,lmy); ctx.quadraticCurveTo(lx,ly,mx,my); ctx.stroke();
+    lx=p.x; ly=p.y; lmx=mx; lmy=my; ink(); }
   function end(){ drawing=false; }
   canvas.style.touchAction='none';
   canvas.addEventListener('touchstart',start,{passive:false});
