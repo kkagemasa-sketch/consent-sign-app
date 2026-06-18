@@ -14,19 +14,28 @@ const PDF_URL = "document.pdf";
 const DOC_VERSION = "hoken-boshu-doui-v1";
 const DOC_TITLE = "保険募集同意書";
 
-// ===== Supabase 設定（プロジェクト作成後にここへ貼り付け）=====
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+// ===== Supabase 設定 =====
+const SUPABASE_URL = "https://gyatdbyalsdzdsjwddkj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable__h7e4rkjqr6KDq9wZjxS8w_tAEUrnuB";
 const SUPABASE_BUCKET = "signed-consents";
-const supaEnabled = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
-const supa = supaEnabled ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const SUPA_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+// クライアントは必要時に生成（supabase.jsの読み込み完了を待たずにページは動く）
+let _supa = null;
+function getSupa(){
+  if(_supa) return _supa;
+  if(SUPA_CONFIGURED && window.supabase){ _supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+  return _supa;
+}
 
 async function uploadSigned(bytes, rec){
-  if(!supaEnabled) return { ok:false, skipped:true };
-  const safeName = (rec.name || "署名者").replace(/[\\/:*?"<>| -]/g,"_").slice(0,40);
+  const supa = getSupa();
+  if(!supa) return { ok:false, skipped:true };
+  // Supabaseの保存パスは英数字のみ（日本語不可）。氏名はPDF内に署名として記録済み
+  const ascii = (rec.name || "").normalize('NFKC').replace(/[^A-Za-z0-9]/g,"").slice(0,20);
   const d = new Date(rec.signedAt);
   const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}${String(d.getSeconds()).padStart(2,'0')}`;
-  const path = `signed/${ts}_${safeName}.pdf`;
+  const rand = Math.random().toString(36).slice(2,8);
+  const path = `signed/${ts}${ascii ? '_'+ascii : ''}_${rand}.pdf`;
   const { error } = await supa.storage.from(SUPABASE_BUCKET)
     .upload(path, new Blob([bytes],{type:'application/pdf'}), { contentType:'application/pdf', upsert:false });
   if(error) return { ok:false, error: error.message };
@@ -231,7 +240,7 @@ document.getElementById('submitBtn').addEventListener('click',async()=>{
     saveRecord(lastRecord);
 
     let up = { ok:false, skipped:true };
-    if(supaEnabled){ submitBtn.textContent='送信中…'; up = await uploadSigned(signedPdfBytes, lastRecord); }
+    if(SUPA_CONFIGURED){ submitBtn.textContent='送信中…'; up = await uploadSigned(signedPdfBytes, lastRecord); }
 
     const head=document.getElementById('doneHead'), sub=document.getElementById('doneSub');
     if(up.ok){ head.textContent='送信が完了しました'; sub.textContent='署名済みの同意書を担当者へお送りしました。これで完了です（送り返す必要はありません）。'; }
