@@ -42,6 +42,20 @@ async function uploadSigned(bytes, rec){
   return { ok:true, path };
 }
 
+// 担当者ID（URLの ?t=xxx）。指定があればその担当者へメール送信する
+const STAFF_ID = new URLSearchParams(location.search).get('t') || '';
+function bytesToBase64(bytes){ let bin=''; const ck=0x8000; for(let i=0;i<bytes.length;i+=ck){ bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+ck)); } return btoa(bin); }
+async function sendToStaff(bytes, rec){
+  if(!STAFF_ID) return { ok:false, skipped:true };
+  try{
+    const res = await fetch('/api/send', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ staffId:STAFF_ID, name:rec.name, signedAt:rec.signedAtLocal, pdfBase64: bytesToBase64(bytes) }) });
+    let j={}; try{ j=await res.json(); }catch(e){}
+    if(res.ok && j.ok) return { ok:true };
+    return { ok:false, error: (j && j.error) ? j.error : ('HTTP '+res.status) };
+  }catch(e){ return { ok:false, error:String(e) }; }
+}
+
 // 埋め込み座標
 const PAGE_H = 841.92;
 const SIG_BOX  = { x: 85, yTopAnchor: 658, maxW: 220, maxH: 46 };
@@ -239,13 +253,24 @@ document.getElementById('submitBtn').addEventListener('click',async()=>{
     lastRecord = { name:nameInput.value.trim(), signedAt:now.toISOString(), signedAtLocal:stamp, docVersion:DOC_VERSION };
     saveRecord(lastRecord);
 
-    let up = { ok:false, skipped:true };
-    if(SUPA_CONFIGURED){ submitBtn.textContent='送信中…'; up = await uploadSigned(signedPdfBytes, lastRecord); }
+    submitBtn.textContent='送信中…';
+    // 会社の控えとしてSupabaseへ保管（設定時）＋ 担当者へメール送信（?t=指定時）
+    const up = SUPA_CONFIGURED ? await uploadSigned(signedPdfBytes, lastRecord) : { ok:false, skipped:true };
+    const mail = await sendToStaff(signedPdfBytes, lastRecord);
 
     const head=document.getElementById('doneHead'), sub=document.getElementById('doneSub');
-    if(up.ok){ head.textContent='送信が完了しました'; sub.textContent='署名済みの同意書を担当者へお送りしました。これで完了です（送り返す必要はありません）。'; }
-    else if(up.skipped){ head.textContent='署名が完了しました'; sub.textContent='署名と日付を反映した同意書（PDF）を保存できます。'; }
-    else { head.textContent='署名は完了しました（送信のみ未完了）'; sub.textContent='通信エラーで自動送信ができませんでした。下のボタンでPDFを保存し、担当者へお送りください。'; showError('自動送信に失敗しました：'+(up.error||'不明なエラー')); }
+    if(mail.ok){
+      head.textContent='送信が完了しました';
+      sub.textContent='署名済みの同意書を担当者へお送りしました。これで完了です（送り返す必要はありません）。';
+    } else if(mail.skipped){
+      // 担当者URL(?t=)なし → 従来どおり（Supabase保管／ダウンロード）
+      head.textContent='署名が完了しました';
+      sub.textContent = up.ok ? '署名を受け付けました。これで完了です。' : '署名と日付を反映した同意書（PDF）を下から保存できます。';
+    } else {
+      head.textContent='署名は完了しました（送信のみ未完了）';
+      sub.textContent='通信エラーで担当者への自動送信ができませんでした。下のボタンでPDFを保存し、担当者へお送りください。';
+      showError('自動送信に失敗しました：'+(mail.error||'不明なエラー'));
+    }
 
     document.getElementById('formView').classList.add('hidden');
     document.getElementById('doneView').classList.remove('hidden');

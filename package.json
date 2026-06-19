@@ -1,0 +1,7 @@
+{
+  "name": "consent-sign-app",
+  "private": true,
+  "dependencies": {
+    "nodemailer": "^6.9.14"
+  }
+}
