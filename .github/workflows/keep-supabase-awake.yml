@@ -1,0 +1,43 @@
+# Supabase「一時停止」防止用の見張り番
+#
+# Supabaseの無料プランは「7日間アクセスが無い」プロジェクトを自動で一時停止する。
+# このワークフローが毎日1回だけプロジェクトへ軽いアクセスをして「活動あり」と
+# 認識させ、一時停止を防ぐ。アプリ本体（署名の動作）には一切影響しない（読み取り確認のみ）。
+#
+# 使う鍵はアプリ(app.js)内に既に公開済みのpublishable keyと同じもの。追加の秘密情報は不要。
+
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: "23 21 * * *"   # 毎日1回 UTC 21:23（日本時間およそ翌朝6:23）
+  workflow_dispatch:          # 手動でも実行できる（テスト用ボタン）
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: https://gyatdbyalsdzdsjwddkj.supabase.co
+          SUPABASE_KEY: sb_publishable__h7e4rkjqr6KDq9wZjxS8w_tAEUrnuB
+        run: |
+          echo "Storageへ軽いアクセスして活動を発生させます..."
+          code=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/storage/v1/object/list/signed-consents" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"prefix":"","limit":1}')
+          echo "storage status: $code"
+
+          code2=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/auth/v1/settings" \
+            -H "apikey: $SUPABASE_KEY")
+          echo "auth status: $code2"
+
+          if [ "$code" != "200" ] && [ "$code2" != "200" ]; then
+            echo "::error::Supabaseへのpingが両方失敗しました (storage=$code / auth=$code2)"
+            exit 1
+          fi
+          echo "OK: Supabaseへアクセスできました（一時停止を防止）"
