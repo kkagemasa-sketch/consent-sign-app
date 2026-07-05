@@ -22,8 +22,17 @@ jobs:
           SUPABASE_URL: https://gyatdbyalsdzdsjwddkj.supabase.co
           SUPABASE_KEY: sb_publishable__h7e4rkjqr6KDq9wZjxS8w_tAEUrnuB
         run: |
+          # 一時的な通信/DNSの失敗に強くするため自動リトライ付き。
+          # curlが接続に失敗しても "000" を返して即中止しないようにする。
+          ping_supabase() {
+            curl -sS -o /dev/null -w "%{http_code}" \
+              --retry 5 --retry-all-errors --retry-delay 6 \
+              --connect-timeout 15 --max-time 45 \
+              "$@" || echo "000"
+          }
+
           echo "Storageへ軽いアクセスして活動を発生させます..."
-          code=$(curl -sS -o /dev/null -w "%{http_code}" \
+          code=$(ping_supabase \
             "$SUPABASE_URL/storage/v1/object/list/signed-consents" \
             -H "apikey: $SUPABASE_KEY" \
             -H "Authorization: Bearer $SUPABASE_KEY" \
@@ -31,7 +40,7 @@ jobs:
             -d '{"prefix":"","limit":1}')
           echo "storage status: $code"
 
-          code2=$(curl -sS -o /dev/null -w "%{http_code}" \
+          code2=$(ping_supabase \
             "$SUPABASE_URL/auth/v1/settings" \
             -H "apikey: $SUPABASE_KEY")
           echo "auth status: $code2"
